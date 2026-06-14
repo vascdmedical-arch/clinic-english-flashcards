@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>クリニック英会話フラッシュカード</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./flashcard-data.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="title-block">
+          <p class="eyebrow">Clinic English</p>
+          <h1>クリニック英会話フラッシュカード</h1>
+        </div>
+        <div class="summary-strip" aria-label="学習状況">
+          <div>
+            <span id="totalCount">0</span>
+            <small>カード</small>
+          </div>
+          <div>
+            <span id="reviewCount">0</span>
+            <small>もう一度</small>
+          </div>
+          <div>
+            <span id="customCount">0</span>
+            <small>追加</small>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-grid">
+        <section class="study-surface" aria-label="フラッシュカード">
+          <nav class="category-tabs" id="categoryTabs" aria-label="項目"></nav>
+
+          <div class="toolbar" aria-label="学習設定">
+            <label class="switch">
+              <input type="checkbox" id="randomToggle" />
+              <span>ランダム</span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="reviewToggle" />
+              <span>もう一度のみ</span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="autoSpeakToggle" />
+              <span>自動発音</span>
+            </label>
+            <label class="voice-field">
+              <span>声</span>
+              <select id="voiceSelect" aria-label="英語音声"></select>
+            </label>
+            <label class="speed-field">
+              <span>速度</span>
+              <input id="rateSlider" type="range" min="0.5" max="1.5" step="0.1" value="1" aria-label="発音速度" />
+              <output id="rateValue" for="rateSlider">1.0x</output>
+            </label>
+          </div>
+
+          <button class="flashcard" id="flashcard" type="button" aria-live="polite">
+            <span class="card-category" id="cardCategory">項目</span>
+            <span class="face-label" id="faceLabel">日本語</span>
+            <span class="card-text" id="cardText"></span>
+            <span class="card-note" id="cardNote"></span>
+          </button>
+
+          <div class="card-actions">
+            <button class="icon-button" id="prevButton" type="button" aria-label="前のカード">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <button class="icon-button" id="speakButton" type="button" aria-label="発音">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18 6a8 8 0 0 1 0 12" /></svg>
+            </button>
+            <button class="icon-button" id="shuffleButton" type="button" aria-label="並び替え">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="M15 15l6 6" /><path d="M4 4l5 5" /></svg>
+            </button>
+            <button class="icon-button" id="nextButton" type="button" aria-label="次のカード">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </div>
+
+          <div class="progress-row">
+            <label class="review-check">
+              <input type="checkbox" id="markAgain" />
+              <span>もう一度</span>
+            </label>
+            <input class="card-slider" id="cardSlider" type="range" min="1" max="1" step="1" value="1" aria-label="カード位置" />
+            <p class="card-position" id="cardPosition">0 / 0</p>
+          </div>
+        </section>
+
+        <aside class="side-panel" aria-label="追加と一覧">
+          <section class="panel-section">
+            <div class="section-heading">
+              <h2>文章追加</h2>
+            </div>
+            <form class="add-form" id="addForm">
+              <label>
+                <span>項目</span>
+                <input id="newCategory" list="categoryOptions" autocomplete="off" required />
+                <datalist id="categoryOptions"></datalist>
+              </label>
+              <label>
+                <span>日本語</span>
+                <textarea id="newJapanese" rows="3" required></textarea>
+              </label>
+              <label>
+                <span>English</span>
+                <textarea id="newEnglish" rows="3" required></textarea>
+              </label>
+              <button class="primary-button wide" type="submit">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                追加
+              </button>
+            </form>
+          </section>
+
+          <section class="panel-section list-section">
+            <div class="section-heading">
+              <h2>カード一覧</h2>
+              <button class="text-button" id="clearMarksButton" type="button">チェック解除</button>
+            </div>
+            <div class="card-list" id="cardList"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
