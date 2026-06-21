@@ -39,6 +39,8 @@ let order = [];
 let currentIndex = 0;
 let showingEnglish = false;
 let voices = [];
+let swipeStart = null;
+let suppressNextClick = false;
 
 function loadState() {
   const defaults = {
@@ -332,6 +334,10 @@ function renderList() {
 }
 
 function flipCard() {
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
   if (!getCurrentCard()) {
     return;
   }
@@ -349,6 +355,54 @@ function moveCard(step) {
   currentIndex = (currentIndex + step + order.length) % order.length;
   showingEnglish = false;
   render();
+}
+
+function startCardSwipe(event) {
+  if (!getCurrentCard()) {
+    return;
+  }
+  if (event.pointerType === "mouse" && event.button !== 0) {
+    return;
+  }
+  swipeStart = {
+    x: event.clientX,
+    y: event.clientY,
+    time: Date.now(),
+    pointerId: event.pointerId,
+  };
+  elements.flashcard.setPointerCapture?.(event.pointerId);
+}
+
+function finishCardSwipe(event) {
+  if (!swipeStart || swipeStart.pointerId !== event.pointerId) {
+    return;
+  }
+  const deltaX = event.clientX - swipeStart.x;
+  const deltaY = event.clientY - swipeStart.y;
+  const elapsed = Date.now() - swipeStart.time;
+  swipeStart = null;
+
+  const horizontal = Math.abs(deltaX);
+  const vertical = Math.abs(deltaY);
+  const threshold = Math.max(48, elements.flashcard.clientWidth * 0.12);
+  const isSwipe = horizontal >= threshold && horizontal > vertical * 1.35 && elapsed < 900;
+
+  if (!isSwipe) {
+    return;
+  }
+
+  suppressNextClick = true;
+  event.preventDefault();
+  moveCard(deltaX < 0 ? 1 : -1);
+  window.setTimeout(() => {
+    suppressNextClick = false;
+  }, 120);
+}
+
+function cancelCardSwipe(event) {
+  if (swipeStart?.pointerId === event.pointerId) {
+    swipeStart = null;
+  }
 }
 
 function jumpToCard(value) {
@@ -514,6 +568,10 @@ function speak(text) {
 
 function attachEvents() {
   elements.flashcard.addEventListener("click", flipCard);
+  elements.flashcard.addEventListener("pointerdown", startCardSwipe);
+  elements.flashcard.addEventListener("pointerup", finishCardSwipe);
+  elements.flashcard.addEventListener("pointercancel", cancelCardSwipe);
+  elements.flashcard.addEventListener("lostpointercapture", cancelCardSwipe);
   elements.speakButton.addEventListener("click", speakCurrent);
   elements.prevButton.addEventListener("click", () => moveCard(-1));
   elements.nextButton.addEventListener("click", () => moveCard(1));
