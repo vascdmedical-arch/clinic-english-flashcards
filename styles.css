@@ -231,6 +231,65 @@ input[type="range"] {
   accent-color: var(--teal);
 }
 
+.audio-mode-bar {
+  display: grid;
+  grid-template-columns: auto minmax(210px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.audio-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid var(--teal);
+  border-radius: var(--radius);
+  background: #e5f5f2;
+  color: var(--teal-dark);
+  padding: 8px 12px;
+  font-weight: 800;
+}
+
+.audio-mode-button.is-active {
+  background: var(--teal);
+  color: #fff;
+}
+
+.practice-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.practice-field input {
+  width: min(220px, 100%);
+}
+
+.practice-field output {
+  min-width: 36px;
+  color: var(--teal-dark);
+  font-size: 0.86rem;
+  text-align: right;
+}
+
+.audio-mode-status {
+  min-width: 88px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: right;
+}
+
 .flashcard {
   position: relative;
   display: grid;
@@ -257,7 +316,8 @@ input[type="range"] {
 .text-button:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+.audio-mode-button:focus-visible {
   outline: 3px solid rgba(0, 143, 132, 0.25);
   outline-offset: 2px;
 }
@@ -600,6 +660,22 @@ svg {
 
   .voice-field select {
     max-width: 100%;
+  }
+
+  .audio-mode-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .audio-mode-button {
+    width: 100%;
+  }
+
+  .practice-field {
+    justify-content: space-between;
+  }
+
+  .audio-mode-status {
+    text-align: left;
   }
 
   .flashcard {
