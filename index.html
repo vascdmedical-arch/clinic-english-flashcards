@@ -59,6 +59,19 @@
             </label>
           </div>
 
+          <div class="audio-mode-bar" aria-label="音声モード">
+            <button class="audio-mode-button" id="audioModeButton" type="button" aria-pressed="false">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7-11-7Z" /></svg>
+              音声モード
+            </button>
+            <label class="practice-field">
+              <span>発声時間</span>
+              <input id="practiceDelaySlider" type="range" min="2" max="10" step="1" value="5" aria-label="発声時間" />
+              <output id="practiceDelayValue" for="practiceDelaySlider">5秒</output>
+            </label>
+            <p class="audio-mode-status" id="audioModeStatus" aria-live="polite">停止中</p>
+          </div>
+
           <button class="flashcard" id="flashcard" type="button" aria-live="polite">
             <span class="card-category" id="cardCategory">項目</span>
             <span class="face-label" id="faceLabel">日本語</span>
