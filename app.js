@@ -12,6 +12,10 @@ const elements = {
   voiceSelect: document.querySelector("#voiceSelect"),
   rateSlider: document.querySelector("#rateSlider"),
   rateValue: document.querySelector("#rateValue"),
+  audioModeButton: document.querySelector("#audioModeButton"),
+  practiceDelaySlider: document.querySelector("#practiceDelaySlider"),
+  practiceDelayValue: document.querySelector("#practiceDelayValue"),
+  audioModeStatus: document.querySelector("#audioModeStatus"),
   flashcard: document.querySelector("#flashcard"),
   cardCategory: document.querySelector("#cardCategory"),
   faceLabel: document.querySelector("#faceLabel"),
@@ -41,6 +45,9 @@ let showingEnglish = false;
 let voices = [];
 let swipeStart = null;
 let suppressNextClick = false;
+let audioModeActive = false;
+let audioModeTimer = null;
+let audioModeCycle = 0;
 
 function loadState() {
   const defaults = {
@@ -50,6 +57,7 @@ function loadState() {
     autoSpeak: true,
     voiceURI: "",
     speechRate: 1,
+    practiceDelay: 5,
     customCards: [],
     marked: {},
   };
@@ -60,6 +68,7 @@ function loadState() {
       ...defaults,
       ...saved,
       speechRate: clampSpeechRate(saved.speechRate),
+      practiceDelay: clampPracticeDelay(saved.practiceDelay),
       customCards: Array.isArray(saved.customCards) ? saved.customCards : [],
       marked: saved.marked && typeof saved.marked === "object" ? saved.marked : {},
     };
@@ -74,6 +83,14 @@ function clampSpeechRate(value) {
     return 1;
   }
   return Math.min(1.5, Math.max(0.5, Math.round(rate * 10) / 10));
+}
+
+function clampPracticeDelay(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds)) {
+    return 5;
+  }
+  return Math.min(10, Math.max(2, Math.round(seconds)));
 }
 
 function saveState() {
@@ -151,6 +168,9 @@ function syncDeck(options = {}) {
 
   showingEnglish = false;
   render();
+  if (audioModeActive) {
+    restartAudioMode();
+  }
 }
 
 function render() {
@@ -168,6 +188,13 @@ function renderControls() {
   elements.autoSpeakToggle.checked = state.autoSpeak;
   elements.rateSlider.value = String(state.speechRate);
   elements.rateValue.textContent = `${state.speechRate.toFixed(1)}x`;
+  elements.practiceDelaySlider.value = String(state.practiceDelay);
+  elements.practiceDelayValue.textContent = `${state.practiceDelay}秒`;
+  elements.audioModeButton.classList.toggle("is-active", audioModeActive);
+  elements.audioModeButton.setAttribute("aria-pressed", String(audioModeActive));
+  elements.audioModeButton.innerHTML = audioModeActive
+    ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 5h4v14H6z" /><path d="M14 5h4v14h-4z" /></svg>停止'
+    : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7-11-7Z" /></svg>音声モード';
 }
 
 function renderSummary() {
@@ -238,6 +265,7 @@ function renderCard() {
   elements.shuffleButton.disabled = !hasCard || order.length < 2;
   elements.markAgain.disabled = !hasCard;
   elements.cardSlider.disabled = !hasCard || order.length < 2;
+  elements.audioModeButton.disabled = !hasCard;
 
   elements.flashcard.classList.toggle("is-empty", !hasCard);
   elements.flashcard.classList.toggle("is-english", hasCard && showingEnglish);
@@ -348,13 +376,16 @@ function flipCard() {
   }
 }
 
-function moveCard(step) {
+function moveCard(step, options = {}) {
   if (!order.length) {
     return;
   }
   currentIndex = (currentIndex + step + order.length) % order.length;
   showingEnglish = false;
   render();
+  if (audioModeActive && options.restartAudio !== false) {
+    restartAudioMode();
+  }
 }
 
 function startCardSwipe(event) {
@@ -416,6 +447,9 @@ function jumpToCard(value) {
   currentIndex = Math.min(Math.max(nextIndex, 0), order.length - 1);
   showingEnglish = false;
   render();
+  if (audioModeActive) {
+    restartAudioMode();
+  }
 }
 
 function setMarked(id, checked, options = {}) {
@@ -477,9 +511,7 @@ function loadVoices() {
     renderVoiceOptions();
     return;
   }
-  voices = window.speechSynthesis
-    .getVoices()
-    .filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+  voices = window.speechSynthesis.getVoices();
   renderVoiceOptions();
 }
 
@@ -496,14 +528,29 @@ function voiceScore(voice) {
 }
 
 function getPreferredVoice() {
-  if (!voices.length) {
+  const englishVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+  if (!englishVoices.length) {
     return null;
   }
-  const saved = voices.find((voice) => voice.voiceURI === state.voiceURI);
+  const saved = englishVoices.find((voice) => voice.voiceURI === state.voiceURI);
   if (saved) {
     return saved;
   }
-  return [...voices].sort((a, b) => voiceScore(b) - voiceScore(a))[0];
+  return [...englishVoices].sort((a, b) => voiceScore(b) - voiceScore(a))[0];
+}
+
+function getJapaneseVoice() {
+  const japaneseVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith("ja"));
+  if (!japaneseVoices.length) {
+    return null;
+  }
+  return [...japaneseVoices].sort((a, b) => {
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+    const aScore = /kyoko|otoya|google|japanese|日本/.test(aName) ? 2 : 0;
+    const bScore = /kyoko|otoya|google|japanese|日本/.test(bName) ? 2 : 0;
+    return bScore - aScore;
+  })[0];
 }
 
 function renderVoiceOptions() {
@@ -519,7 +566,8 @@ function renderVoiceOptions() {
     return;
   }
 
-  if (!voices.length) {
+  const englishVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+  if (!englishVoices.length) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "読み込み中";
@@ -531,7 +579,7 @@ function renderVoiceOptions() {
 
   elements.voiceSelect.disabled = false;
   const preferred = getPreferredVoice();
-  for (const voice of voices) {
+  for (const voice of englishVoices) {
     const option = document.createElement("option");
     option.value = voice.voiceURI;
     option.textContent = `${voice.name} (${voice.lang})`;
@@ -553,17 +601,148 @@ function speakCurrent() {
 
 function speak(text) {
   if (!("speechSynthesis" in window)) {
-    return;
+    return Promise.resolve();
   }
   const voice = getPreferredVoice();
+  return speakWithVoice(text, {
+    lang: voice?.lang || "en-US",
+    voice,
+    rate: state.speechRate,
+    pitch: 1.08,
+  });
+}
+
+function speakWithVoice(text, options = {}) {
+  if (!("speechSynthesis" in window)) {
+    return Promise.resolve();
+  }
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = voice?.lang || "en-US";
-  utterance.voice = voice;
-  utterance.rate = state.speechRate;
-  utterance.pitch = 1.08;
+  utterance.lang = options.lang || "en-US";
+  utterance.voice = options.voice || null;
+  utterance.rate = options.rate || state.speechRate;
+  utterance.pitch = options.pitch || 1;
   utterance.volume = 1;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
+  return new Promise((resolve) => {
+    utterance.onend = resolve;
+    utterance.onerror = resolve;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+function setAudioModeStatus(text) {
+  elements.audioModeStatus.textContent = text;
+}
+
+function clearAudioModeTimer() {
+  if (audioModeTimer) {
+    window.clearTimeout(audioModeTimer);
+    audioModeTimer = null;
+  }
+}
+
+function waitForPracticeTime(cycle) {
+  clearAudioModeTimer();
+  return new Promise((resolve) => {
+    audioModeTimer = window.setTimeout(() => {
+      audioModeTimer = null;
+      resolve();
+    }, state.practiceDelay * 1000);
+  }).then(() => audioModeActive && cycle === audioModeCycle);
+}
+
+function startAudioMode() {
+  if (!getCurrentCard()) {
+    return;
+  }
+  audioModeActive = true;
+  renderControls();
+  runAudioModeCycle();
+}
+
+function stopAudioMode() {
+  audioModeActive = false;
+  audioModeCycle += 1;
+  clearAudioModeTimer();
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  setAudioModeStatus("停止中");
+  renderControls();
+}
+
+function restartAudioMode() {
+  if (!audioModeActive) {
+    return;
+  }
+  audioModeCycle += 1;
+  clearAudioModeTimer();
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  window.setTimeout(runAudioModeCycle, 80);
+}
+
+async function runAudioModeCycle() {
+  const card = getCurrentCard();
+  if (!audioModeActive || !card) {
+    stopAudioMode();
+    return;
+  }
+
+  const cycle = audioModeCycle + 1;
+  audioModeCycle = cycle;
+  showingEnglish = false;
+  render();
+
+  setAudioModeStatus("日本語");
+  const japaneseVoice = getJapaneseVoice();
+  await speakWithVoice(card.japanese, {
+    lang: japaneseVoice?.lang || "ja-JP",
+    voice: japaneseVoice,
+    rate: state.speechRate,
+    pitch: 1,
+  });
+  if (!audioModeActive || cycle !== audioModeCycle) {
+    return;
+  }
+
+  setAudioModeStatus(`発声 ${state.practiceDelay}秒`);
+  const canContinue = await waitForPracticeTime(cycle);
+  if (!canContinue) {
+    return;
+  }
+
+  showingEnglish = true;
+  renderCard();
+  setAudioModeStatus("English");
+  const englishVoice = getPreferredVoice();
+  await speakWithVoice(card.english, {
+    lang: englishVoice?.lang || "en-US",
+    voice: englishVoice,
+    rate: state.speechRate,
+    pitch: 1.08,
+  });
+  if (!audioModeActive || cycle !== audioModeCycle) {
+    return;
+  }
+
+  moveCard(1, { restartAudio: false });
+  if (!audioModeActive || cycle !== audioModeCycle) {
+    return;
+  }
+
+  setAudioModeStatus("次へ");
+  clearAudioModeTimer();
+  audioModeTimer = window.setTimeout(runAudioModeCycle, 450);
+}
+
+function toggleAudioMode() {
+  if (audioModeActive) {
+    stopAudioMode();
+  } else {
+    startAudioMode();
+  }
 }
 
 function attachEvents() {
@@ -572,6 +751,7 @@ function attachEvents() {
   elements.flashcard.addEventListener("pointerup", finishCardSwipe);
   elements.flashcard.addEventListener("pointercancel", cancelCardSwipe);
   elements.flashcard.addEventListener("lostpointercapture", cancelCardSwipe);
+  elements.audioModeButton.addEventListener("click", toggleAudioMode);
   elements.speakButton.addEventListener("click", speakCurrent);
   elements.prevButton.addEventListener("click", () => moveCard(-1));
   elements.nextButton.addEventListener("click", () => moveCard(1));
@@ -608,6 +788,17 @@ function attachEvents() {
     state.speechRate = clampSpeechRate(elements.rateSlider.value);
     elements.rateValue.textContent = `${state.speechRate.toFixed(1)}x`;
     saveState();
+    if (audioModeActive) {
+      restartAudioMode();
+    }
+  });
+  elements.practiceDelaySlider.addEventListener("input", () => {
+    state.practiceDelay = clampPracticeDelay(elements.practiceDelaySlider.value);
+    elements.practiceDelayValue.textContent = `${state.practiceDelay}秒`;
+    saveState();
+    if (audioModeActive) {
+      restartAudioMode();
+    }
   });
   elements.cardSlider.addEventListener("input", () => {
     jumpToCard(elements.cardSlider.value);
@@ -618,6 +809,7 @@ function attachEvents() {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
+    clearAudioModeTimer();
   });
 }
 
