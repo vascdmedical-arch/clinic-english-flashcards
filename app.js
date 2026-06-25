@@ -48,6 +48,7 @@ let suppressNextClick = false;
 let audioModeActive = false;
 let audioModeTimer = null;
 let audioModeCycle = 0;
+let lastAudioModeActivation = 0;
 
 function loadState() {
   const defaults = {
@@ -605,11 +606,27 @@ function speak(text) {
   }
   const voice = getPreferredVoice();
   return speakWithVoice(text, {
+    cancelBefore: true,
     lang: voice?.lang || "en-US",
     voice,
     rate: state.speechRate,
     pitch: 1.08,
   });
+}
+
+function estimateSpeechTimeout(text, options = {}) {
+  const length = String(text || "").length;
+  const rate = Number(options.rate) || 1;
+  const isJapanese = String(options.lang || "").toLowerCase().startsWith("ja");
+  const perChar = isJapanese ? 170 : 95;
+  return Math.min(30000, Math.max(3500, 1400 + (length * perChar) / rate));
+}
+
+function cancelSpeech() {
+  if (!("speechSynthesis" in window)) {
+    return;
+  }
+  window.speechSynthesis.cancel();
 }
 
 function speakWithVoice(text, options = {}) {
@@ -623,10 +640,38 @@ function speakWithVoice(text, options = {}) {
   utterance.pitch = options.pitch || 1;
   utterance.volume = 1;
   return new Promise((resolve) => {
-    utterance.onend = resolve;
-    utterance.onerror = resolve;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    }, estimateSpeechTimeout(text, options));
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve();
+    };
+
+    utterance.onend = finish;
+    utterance.onerror = finish;
+
+    try {
+      if (options.cancelBefore) {
+        window.speechSynthesis.cancel();
+      }
+      if (typeof window.speechSynthesis.resume === "function") {
+        window.speechSynthesis.resume();
+      }
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      finish();
+    }
   });
 }
 
@@ -655,7 +700,10 @@ function startAudioMode() {
   if (!getCurrentCard()) {
     return;
   }
+  loadVoices();
   audioModeActive = true;
+  cancelSpeech();
+  setAudioModeStatus("準備中");
   renderControls();
   runAudioModeCycle();
 }
@@ -664,9 +712,7 @@ function stopAudioMode() {
   audioModeActive = false;
   audioModeCycle += 1;
   clearAudioModeTimer();
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-  }
+  cancelSpeech();
   setAudioModeStatus("停止中");
   renderControls();
 }
@@ -677,9 +723,7 @@ function restartAudioMode() {
   }
   audioModeCycle += 1;
   clearAudioModeTimer();
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-  }
+  cancelSpeech();
   window.setTimeout(runAudioModeCycle, 80);
 }
 
@@ -745,13 +789,31 @@ function toggleAudioMode() {
   }
 }
 
+function handleAudioModeActivation(event) {
+  const now = Date.now();
+  if (now - lastAudioModeActivation < 450) {
+    return;
+  }
+  lastAudioModeActivation = now;
+  if (event?.cancelable) {
+    event.preventDefault();
+  }
+  toggleAudioMode();
+}
+
 function attachEvents() {
   elements.flashcard.addEventListener("click", flipCard);
   elements.flashcard.addEventListener("pointerdown", startCardSwipe);
   elements.flashcard.addEventListener("pointerup", finishCardSwipe);
   elements.flashcard.addEventListener("pointercancel", cancelCardSwipe);
   elements.flashcard.addEventListener("lostpointercapture", cancelCardSwipe);
-  elements.audioModeButton.addEventListener("click", toggleAudioMode);
+  elements.audioModeButton.addEventListener("click", handleAudioModeActivation);
+  elements.audioModeButton.addEventListener("touchend", handleAudioModeActivation, { passive: false });
+  elements.audioModeButton.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "mouse") {
+      handleAudioModeActivation(event);
+    }
+  });
   elements.speakButton.addEventListener("click", speakCurrent);
   elements.prevButton.addEventListener("click", () => moveCard(-1));
   elements.nextButton.addEventListener("click", () => moveCard(1));
@@ -806,9 +868,7 @@ function attachEvents() {
   elements.addForm.addEventListener("submit", addCard);
   elements.clearMarksButton.addEventListener("click", clearMarks);
   window.addEventListener("beforeunload", () => {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
+    cancelSpeech();
     clearAudioModeTimer();
   });
 }
@@ -818,5 +878,9 @@ syncDeck({ preserveId: "" });
 loadVoices();
 
 if ("speechSynthesis" in window) {
-  window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+  if (typeof window.speechSynthesis.addEventListener === "function") {
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+  } else {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
 }
